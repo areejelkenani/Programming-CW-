@@ -1,61 +1,47 @@
-#binary terminator added to mark the end of the msg
-TERMINATOR = "00000000"
+#terminator usued to detect the end of the hidden msg
+TERMINATOR = "00000000"  
 
-#reads the BMP image as raw bytes
-def read_bmp_bytes(filename):
+#reads the BMP file as raw bytes so we can access pixel data
+def read_bmp_bytes(filename):                           
     with open(filename, "rb") as f:
         return bytearray(f.read())
 
-#writes modified byytes back to a new BMP file 
-def write_bmp_bytes(filename, data):
-    with open(filename, "wb") as f:
-        f.write(data)
+#returns the LSB of a byte
+def get_LSB(byte):                                     
+    return format(byte, "08b")[-1]
 
-#converts each character of the msg into 8-bit binary 
-def text_to_binary(message):
-    binary = ""
-    for char in message:
-        binary += format(ord(char), "08b")
-    return binary
+#converts a binary string back into readable text
+def binary_to_text(binary_message):
+    text = ""
+    for i in range(0, len(binary_message), 8):
+        byte = binary_message[i:i + 8]
+        if len(byte) == 8:
+            value = int(byte, 2)
+            #stop decoding when terminator is reached 
+            if value == 0:
+                break
+            text += chr(value)
+    return text
 
-#replaces the LSB of a byte with the given bit 
-def set_LSB(byte, bit):
-    return (byte & 0b11111110) | int(bit)
-
-#encodes the secret msg inside the BMP image 
-def encode_image(image_file, user_input, is_file):
-    bmp_data = read_bmp_bytes(image_file)
-
-    #separate header and pixel data
-    header = bmp_data[:54]
+#extracts the hidden msg from the encoded BMP image 
+def decode_image(encoded_file):
+    #read all bytes from the encoded image 
+    bmp_data = read_bmp_bytes(encoded_file)
+    #skip BMP header (first 54 bytes)
     pixel_data = bmp_data[54:]
 
-    #read msg either from user input or from a text file 
-    if is_file.lower() == "y":
-        with open(user_input, "r") as f:
-            secret_message = f.read().strip()
-    else:
-        secret_message = user_input
+    binary_message = ""
 
-    #convert msg to binary and add terminator 
-    binary_message = text_to_binary(secret_message)
-    binary_message += TERMINATOR
+    #read LSB from pixel data until terminator is found 
+    for byte in pixel_data:
+        binary_message += get_LSB(byte)
+        #check for terminator every 8 bits
+        if len(binary_message) % 8 == 0:
+            if binary_message[-8:] == TERMINATOR:
+                break
 
-    #check if image can store the full msg 
-    if len(binary_message) > len(pixel_data):
-        print("Message too long for this image.")
-        return
-    
-    #include each bit into the LSB of pixel bytes 
-    for i in range(len(binary_message)):
-        pixel_data[i] = set_LSB(pixel_data[i], binary_message[i])
+    #convert extracted binary data back to text 
+    secret_message = binary_to_text(binary_message)
 
-    # auto output filename
-    output_file = "encoded_image.bmp"
-
-    #combine header and modified pixel data 
-    new_bmp = header + pixel_data
-    write_bmp_bytes(output_file, new_bmp)
-
-    print("Message encoded successfully.")
-    print("Saved as:", output_file)
+    print("Decoded message:")
+    print(secret_message)
